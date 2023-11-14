@@ -1,0 +1,8 @@
+version: "3.8"
+ 
+services:
+  sonos-api:
+    container_name: sonos-api
+    build: .
+    network_mode: host
+    restart: unless-stopped
