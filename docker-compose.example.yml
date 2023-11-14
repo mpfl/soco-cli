@@ -6,10 +6,10 @@ services:
     command: /soco_cli/docker/entrypoint.sh
     build: .
     environment:
-      SC_PORT: "8000" # Default 8000
-      SC_SUBNETS: "192.168.1.0/24" # Set to the subnet your Sonos speakers are on
+      - SC_PORT:"8000" # Default 8000
+      - SC_SUBNETS:"192.168.1.0/24" # Set to the subnet your Sonos speakers are on
     ports:
       - 8000:8000
     volumes:
-      - /home/sonos-api/macros:/macros
+      - ~./sonos-api/macros:/macros
     restart: unless-stopped
