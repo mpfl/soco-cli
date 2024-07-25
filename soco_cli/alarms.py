@@ -343,8 +343,9 @@ def copy_modify_alarm(speaker, action, args, soco_function, use_local_speaker_li
             break
     else:
         error_report(
-            "Alarm ID '{}' not found; use the 'alarms' action to find the integer ID"
-            .format(alarm_id)
+            "Alarm ID '{}' not found; use the 'alarms' action to find the integer ID".format(
+                alarm_id
+            )
         )
         return False
 
@@ -362,8 +363,9 @@ def copy_modify_alarm(speaker, action, args, soco_function, use_local_speaker_li
         new_alarm.save()
     except SoCoUPnPException as e:
         error_report(
-            "Failed to copy/move alarm; did you remember to modify the start time?: {}"
-            .format(e)
+            "Failed to copy/move alarm; did you remember to modify the start time?: {}".format(
+                e
+            )
         )
         return False
 

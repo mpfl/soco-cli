@@ -1,7 +1,9 @@
 """Plays files from the local filesystem."""
 
 import functools
+import http.client
 import logging
+import socket
 import sys
 import time
 import urllib.parse
@@ -10,7 +12,7 @@ from ipaddress import IPv4Address, IPv4Network
 from os import chdir, path
 from socketserver import ThreadingMixIn
 from threading import Thread
-from typing import List, Union
+from typing import List, Optional
 
 import ifaddr  # type: ignore
 from RangeHTTPServer import RangeRequestHandler  # type: ignore
@@ -93,7 +95,7 @@ class MyHTTPHandler(RangeRequestHandler):
 
 def http_server(
     server_ip: str, directory: str, filename: str, speaker_ips: List[str]
-) -> Union[ThreadedHTTPServer, None]:
+) -> Optional[ThreadedHTTPServer]:
     # Set the directory from which to serve files, in the handler
     # Set the specific filename and client IP that are authorised
     handler = functools.partial(
@@ -122,18 +124,65 @@ def http_server(
     return None
 
 
-def get_server_ip(speaker: SoCo) -> Union[str, None]:
-    # Get a suitable IP address to use as a server address for Sonos
-    # on this host
+def get_server_ip(speaker: SoCo) -> Optional[str]:
+    # Get the host IP address to use as a server IP for Sonos
+    # on this host.
+
     adapters = ifaddr.get_adapters()
+
+    # First, try to find a host IP address in the same network as the speaker
     for adapter in adapters:
         for ip in adapter.ips:
-            if ip.is_IPv4:
+            if ip.is_IPv4 and ip.ip != "127.0.0.1":
+                logging.info(
+                    "Checking if IP address '{}' is in target speaker's network".format(
+                        ip.ip
+                    )
+                )
                 network = IPv4Network(
                     ip.ip + "/" + str(ip.network_prefix), strict=False
                 )
                 if IPv4Address(speaker.ip_address) in network:
                     return ip.ip
+
+    # If that fails, try to find a host IP address that can reach the target speaker
+    for adapter in adapters:
+        for ip in adapter.ips:
+            if ip.is_IPv4 and ip.ip != "127.0.0.1":
+                # Find an available port
+                for port in range(PORT_START, PORT_END + 1):
+                    try:
+                        logging.info("Checking if port {} is available".format(port))
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            s.bind((ip.ip, port))
+                            available_port = port
+                            logging.info("Port {} is available".format(port))
+                            break
+                    except socket.error:
+                        continue
+                else:
+                    logging.info("No available ports for IP address '{}'".format(ip.ip))
+                    continue
+                try:
+                    logging.info(
+                        "Checking target speaker's reachability from IP address '{}'".format(
+                            ip.ip
+                        )
+                    )
+                    http_connection = http.client.HTTPConnection(
+                        speaker.ip_address,
+                        port=1400,
+                        timeout=5.0,
+                        source_address=(ip.ip, available_port),
+                    )
+                    http_connection.request("GET", "/status/info")
+                    response = http_connection.getresponse()
+                    http_connection.close()
+                    if response.status == 200:
+                        return ip.ip
+                except:
+                    continue
+
     return None
 
 
@@ -186,7 +235,6 @@ def is_supported_type(filename: str) -> bool:
     file_upper = filename.upper()
     for file_type in SUPPORTED_TYPES:
         if file_upper.endswith("." + file_type):
-            # Supported file type
             return True
     return False
 

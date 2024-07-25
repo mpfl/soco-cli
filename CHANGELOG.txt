@@ -1,3 +1,13 @@
+v0.4.79   - Add 'list_audio_files' path to HTTP API Server
+v0.4.78   - Allow pass-through of '_end_on_pause' via HTTP API
+          - HTTP API server: new 'async' operation will cancel an existing,
+            running one
+v0.4.77   - Changes to 'play_file' speaker reachability fallback logic
+          - Add support for HTTP API Server 'async_' actions
+v0.4.76   - Add 'play_sharelink' action
+v0.4.75   - Use dual-stage approach for determining 'play_file' server IP address
+v0.4.74   - Determine HTTP server IP to use for 'play_file' using target speaker
+            reachability
 v0.4.73   - Remove dependency on distutils.version.StrictVersion for Python 3.12
             compatibility
 v0.4.72   - Workaround for https://github.com/SoCo/SoCo/issues/950

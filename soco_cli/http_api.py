@@ -9,9 +9,12 @@ if version_info.major == 3 and version_info.minor < 7:
 import argparse
 import pprint
 import shlex
+from os import kill, scandir
 from os.path import abspath
-from subprocess import STDOUT, CalledProcessError, check_output
-from typing import Dict, Tuple
+from signal import SIGINT
+from subprocess import STDOUT, CalledProcessError, Popen, check_output
+from sys import exit
+from typing import Dict, List, Optional, Tuple
 
 import uvicorn  # type: ignore
 from fastapi import FastAPI
@@ -21,6 +24,7 @@ from soco_cli.api import get_all_speaker_names
 from soco_cli.api import get_soco_object as get_speaker
 from soco_cli.api import rescan_speakers
 from soco_cli.api import run_command as sc_run
+from soco_cli.play_local_file import is_supported_type
 from soco_cli.speakers import Speakers
 from soco_cli.utils import version as print_version
 
@@ -33,9 +37,46 @@ PREFIX_MACRO = PREFIX + "Macro: "
 MACROS: Dict[str, str] = {}
 MACRO_FILE = ""
 PP = pprint.PrettyPrinter(indent=len(PREFIX_MACRO))
+ASYNC_PREFIX = "async_"
 
 # Gets used with the local speaker list only
 SPEAKER_LIST = Speakers(network_timeout=1.0)
+
+
+class ActiveAsyncOps:
+    """
+    Keep track of running async processes, and allow
+    processes to be stopped.
+    """
+
+    def __init__(self):
+        self.active_async_ops = {}
+
+    def add_async_pid(self, speaker_ip: str, pid: int):
+        self.active_async_ops.update({speaker_ip: pid})
+
+    def get_async_pid(self, speaker_ip) -> Optional[int]:
+        return self.active_async_ops.get(speaker_ip)
+
+    def remove_async_pid(self, speaker_ip) -> Optional[int]:
+        pid = self.active_async_ops.get(speaker_ip)
+        if pid is not None:
+            self.active_async_ops.pop(speaker_ip)
+        return pid
+
+    def stop_async_process(self, speaker_ip: str) -> Optional[int]:
+        pid = self.get_async_pid(speaker_ip)
+        if pid is None:
+            return None
+        try:
+            kill(pid, SIGINT)
+        except:
+            pass
+        self.remove_async_pid(speaker_ip)
+        return pid
+
+
+ASYNC_OPS = ActiveAsyncOps()
 
 
 sc_app = FastAPI(
@@ -56,9 +97,23 @@ def command_core(
     device, error_msg = get_speaker(speaker, use_local_speaker_list=use_local)
     if device:
         speaker = device.player_name
-        exit_code, result, error_msg = sc_run(
-            device, action, *args, use_local_speaker_list=use_local
-        )
+        if not action.startswith(ASYNC_PREFIX):
+            exit_code, result, error_msg = sc_run(
+                device, action, *args, use_local_speaker_list=use_local
+            )
+        else:
+            action = action.replace(ASYNC_PREFIX, "")
+            try:
+                ASYNC_OPS.stop_async_process(device.ip_address)
+                proc = Popen(["sonos", device.ip_address, action, *args])
+                ASYNC_OPS.add_async_pid(device.ip_address, proc.pid)
+                exit_code = 0
+                error_msg = ""
+                result = ""
+            except Exception as e:
+                exit_code = 1
+                error_msg = str(e)
+                result = ""
     else:
         exit_code = 1
         result = ""
@@ -129,6 +184,20 @@ def rediscover() -> Dict:
         speakers = get_all_speaker_names()
     print(PREFIX + "Speakers (re)discovered: {}".format(speakers))
     return {"speakers_discovered": speakers}
+
+
+@sc_app.get("/list_audio_files/{directory:path}")
+def list_audio_files(directory: str) -> List[str]:
+    print(directory)
+    tracks = []
+    try:
+        with scandir(directory) as files:
+            for file in files:
+                if is_supported_type(file.name):
+                    tracks.append(file.name)
+    except FileNotFoundError:
+        pass
+    return tracks
 
 
 # Deprecated
@@ -385,6 +454,14 @@ def action_1_path(speaker: str, action: str, arg_1: str) -> Dict:
     """
     Handle the case where 'arg_1' is a path.
     """
+
+    # Handle special case of _end_on_pause_ being appended to a file path
+    # instead of being treated as a separate argument.
+    arg_2 = "_end_on_pause_"
+    if arg_1.endswith(arg_2):
+        arg_1 = arg_1.replace("/" + arg_2, "")
+        return command_core(speaker, action, arg_1, arg_2, use_local=USE_LOCAL)
+
     return command_core(speaker, action, arg_1, use_local=USE_LOCAL)
 
 
@@ -483,7 +560,10 @@ def main() -> None:
                 print(PREFIX + "Discovery failed: try '/rediscover'")
 
         # Start the server
-        uvicorn.run(sc_app, host="0.0.0.0", use_colors=False, port=PORT)
+        try:
+            uvicorn.run(sc_app, host="0.0.0.0", use_colors=False, port=PORT)
+        except KeyboardInterrupt:
+            pass
         print(PREFIX + INFO + " stopped")
         exit(0)
 

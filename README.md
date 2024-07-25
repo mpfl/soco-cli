@@ -62,6 +62,7 @@
       * [Using the Local Speaker Cache](#using-the-local-speaker-cache)
       * [HTTP Request Structure](#http-request-structure)
       * [Return Values](#return-values)
+      * [Asynchronous Actions (Experimental)](#asynchronous-actions-experimental)
       * [Macros: Defining Custom HTTP API Server Actions](#macros-defining-custom-http-api-server-actions)
          * [Macro Definition and Usage](#macro-definition-and-usage)
          * [Macro Arguments](#macro-arguments)
@@ -84,7 +85,7 @@
    * [Resources](#resources)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct  9 14:49:13 BST 2023 -->
+<!-- Added by: pwt, at: Sun May 19 15:54:07 BST 2024 -->
 
 <!--te-->
 
@@ -287,7 +288,7 @@ It's possible to play local audio files in **MP3, M4A, MP4, FLAC, OGG, WMA, WAV,
 
 SoCo-CLI establishes a temporary internal HTTP server from which the specified audio file can be streamed, and then instructs the speaker to play it. The `play_file` action will terminate once playback stops. Note that playback can be paused using a Sonos app (or SoCo-CLI), and the HTTP server will remain active so that playback can be resumed.
 
-Unfortunately, one can pause but not fully stop playback when using the Sonos apps. Hence, stop playback by playing something else on Sonos, by issuing a 'CTRL-C' to the active `play_file` action, or by issuing `sonos <SPEAKER> stop` from another command line. Alternatively, use the '_end_on_pause_' option to terminate the `play_file` action if playback is paused.
+Unfortunately, one can pause but not fully stop playback when using the Sonos apps. Hence, stop playback by playing something else on Sonos, by issuing a 'CTRL-C' to the active `play_file` action, or by issuing `sonos <SPEAKER> stop` from another command line. Alternatively, use the `_end_on_pause_` option to terminate the `play_file` action if playback is paused.
 
 The host running SoCo-CLI must remain on and connected to the network during playback, in order to serve the file to the speaker. The internal HTTP server is active only for the duration of the `play_file` action. For security reasons, it will only serve the specified audio file, and only to the IP addresses of the Sonos speakers in the system.
 
@@ -409,6 +410,7 @@ sonos Kitchen play_from_queue 5
 - **`play_m3u <m3u_file> <options>`** (or **`play_local_m3u`**): Plays a local M3U/M3U8 playlist consisting of local audio files (in supported audio formats). Can be followed by options `p` to print each filename before it plays, and/or `s` to shuffle the playlist, or `r` to play a single, random track from the playlist. (If using multiple options, concatenate them: e.g., `ps`.) Example: `sonos Study play_m3u my_playlist.m3u ps`. Add the `i` option to invoke **interactive** mode, which allows use of the keyboard to go to the (N)ext track, to (P)ause, or to (R)esume playback.
 - **`play_mode` (or `mode`)**: Returns the play mode of the speaker, one of `NORMAL`, `REPEAT_ONE`, `REPEAT_ALL`, `SHUFFLE`, `SHUFFLE_REPEAT_ONE`, or `SHUFFLE_NOREPEAT`.
 - **`play_mode <mode>` (or `mode`)**: Sets the play mode of the speaker to `<mode>`, which is one of the values above.
+- **`play_sharelink <sharelink>`**: Adds a sharelink to the end of the queue and starts playback.
 - **`play_uri <uri> <title>` (or `uri`, `pu`)**: Plays the audio object given by the `<uri>` parameter (e.g., a radio stream URL). `<title>` is optional, and if present will be used for the title of the audio stream.
 - **`previous` (or `prev`)**: Move to the previous track (if applicable for the audio source).
 - **`repeat` (or `rpt`)**: Returns the repeat mode state: 'off', 'one', or 'all'.
@@ -1074,6 +1076,22 @@ The **`exit_code`** field is an integer. This will be zero if the command comple
 If the command is successful, the **`result`** field contains the result string, which is exactly the string that would have been printed if the action had been performed on the command line.
 
 If the command is unsuccessful, the **`error_msg`** field contains an error message describing the error.
+
+### Asynchronous Actions (Experimental)
+
+It's sometimes useful for the HTTP API server to respond immediately while its invoked action continues to run in the background. For example, if one wants to invoke a `play_file` action, and have the server respond immediately while the file is played in separate process.
+
+This can be achieved by prefixing the action with `async_`. For example:
+
+```commandline
+http://192.168.0.100:8000/Kitchen/async_play_file/my_file.mp3
+```
+
+Note that the data returned in this case is probably not useful: it will simply indicate whether the background command was invoked successfully, not whether the command was successful.
+
+Async actions are mutually exclusive for a given speaker: any running async action will be cancelled if a new async action is invoked.
+
+The `async_` functionality does not (yet) apply to the Macros feature described below.
 
 ### Macros: Defining Custom HTTP API Server Actions
 
