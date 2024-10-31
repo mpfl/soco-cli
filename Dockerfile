@@ -10,3 +10,5 @@ ENV SC_SUBNETS=192.168.1.0/24
 VOLUME ["/macros"]
 
 CMD ["/soco_cli/docker/entrypoint.sh"]
+
+LABEL org.opencontainers.image.description="HTTP API to control local Sonos system"
