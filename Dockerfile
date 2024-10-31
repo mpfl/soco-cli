@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.13-slim
 
 COPY . /soco_cli
 
@@ -9,4 +9,4 @@ ENV SC_SUBNETS=192.168.1.0/24
 
 VOLUME ["/macros"]
 
-CMD ["/usr/local/bin/sonos-http-api-server"]
+CMD ["/soco_cli/docker/entrypoint.sh"]
