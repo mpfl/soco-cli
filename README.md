@@ -29,7 +29,7 @@
       * [Queue Actions](#queue-actions)
       * [Favourites and Playlists](#favourites-and-playlists)
       * [TuneIn Radio Station Favourites](#tunein-radio-station-favourites)
-      * [Grouping and Stereo Pairing](#grouping-and-stereo-pairing)
+      * [Grouping, Stereo Pairing, and Surround (Satellite) Speakers](#grouping-stereo-pairing-and-surround-satellite-speakers)
       * [Alarms](#alarms)
       * [Music Library Search Functions](#music-library-search-functions)
       * [Speaker and Sonos System Information](#speaker-and-sonos-system-information)
@@ -72,6 +72,7 @@
          * [Reloading the Macro Definition File](#reloading-the-macro-definition-file)
          * [Return Values](#return-values-1)
          * [Listing Macros](#listing-macros)
+         * [Asynchronous Macros](#asynchronous-macros)
       * [Listing Speakers](#listing-speakers)
       * [Rediscovering Speakers](#rediscovering-speakers)
       * [Inspecting the HTTP API](#inspecting-the-http-api)
@@ -85,7 +86,7 @@
    * [Resources](#resources)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun May 19 15:54:07 BST 2024 -->
+<!-- Added by: pwt, at: Tue Apr  7 08:43:38 BST 2026 -->
 
 <!--te-->
 
@@ -102,6 +103,8 @@ For interactive command line use, SoCo-CLI provides a powerful [Interactive Shel
 SoCo-CLI can be imported as a streamlined, high-level [API](#using-soco-cli-as-a-python-library) library by other Python programs, and acts as an intermediate abstraction layer between the client program and the underlying SoCo library, simplifying the use of SoCo.
 
 SoCo-CLI can also run as a simple [HTTP API server](#the-soco-cli-http-api-server), providing access to a huge range of actions via simple HTTP requests. (Requires Python 3.7 or above.)
+
+SoCo-CLI only uses **local network** (UPnP) interaction with Sonos devices. There is no support for the Sonos cloud API and there is no intention to change this. This means that support for music service content is limited to Sonos Playlists and music service shared links.
 
 ## Supported Environments
 
@@ -197,12 +200,12 @@ alias ss="sonos Study"
 alias sd="sonos-discover"
 ```
 
-This allows the use of shorthand like `sk stop`, to stop playback on the Kitchen speaker. Note, however, that this won't work with sequences of commands using a single `sonos` invocation, separated with ` : ` (see [Multiple Sequential Commands](#multiple-sequential-commands)), only for the first command in such a sequence. (Normal, mutiple `sonos` invocation, shell sequences using `;` or `&&` as separators will work, of course.)
+This allows the use of shorthand like `sk stop`, to stop playback on the Kitchen speaker. Note, however, that this won't work with sequences of commands using a single `sonos` invocation, separated with ` : ` (see [Multiple Sequential Commands](#multiple-sequential-commands)), only for the first command in such a sequence. (Normal, multiple `sonos` invocation, shell sequences using `;` or `&&` as separators will work, of course.)
 
 ### Options for the `sonos` Command
 
 - **`--version, -v`**: Print the versions of SoCo-CLI, SoCo, and Python.
-- **`--check_for_update`**: Check for a more recent version of SoCo-CLI.
+- **`--check-for-update`**: Check for a more recent version of SoCo-CLI.
 - **`--actions`**: Print the list of available actions.
 - **`--docs`**: Print the URL of this README documentation, for the version of SoCo-CLI being used.
 - **`--log <level>`**: Turn on logging. Available levels are `NONE` (default), `CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`, in order of increasing verbosity. `INFO` level logging tends to be the most useful when troubleshooting SoCo-CLI issues.
@@ -211,13 +214,13 @@ The following options are for use with the cached discovery mechanism:
 
 - **`--use-local-speaker-list, -l`**: Use the local speaker list instead of SoCo discovery. The speaker list will first be created and saved if it doesn't already exist.
 - **`--refresh-local-speaker-list, -r`**: In conjunction with the `-l` option, the speaker list will be regenerated and saved.
-- **`--network_discovery_threads, -t`**: The maximum number of parallel threads used to scan the local network.
-- **`--network_discovery_timeout, -n`**: The timeout used when scanning each host on the local network (how long to wait for a socket connection on port 1400 before giving up).
-- **`--min_netmask, -m`**: The minimum netmask to use when scanning networks. Used to constrain the IP search space.
+- **`--network-discovery-threads, -t`**: The maximum number of parallel threads used to scan the local network.
+- **`--network-discovery-timeout, -n`**: The timeout used when scanning each host on the local network (how long to wait for a socket connection on port 1400 before giving up).
+- **`--min-netmask, -m`**: The minimum netmask to use when scanning networks. Used to constrain the IP search space.
 
 Note that the `sonos-discover` utility (discussed below) can also be used to manage the local speaker list. This is the recommended way of using cached discovery: first run `sonos-discover` to create the local speaker database, then use `sonos` with the `-l` option to use the local database when invoking `sonos` actions.
 
-If you set the environment variable **`USE_LOCAL_CACHE=TRUE`**, the `--use_local_speaker_list` option will always be used.
+If you set the environment variable **`USE_LOCAL_CACHE=TRUE`**, the `--use-local-speaker-list` option will always be used.
 
 ### Firewall Rules
 
@@ -322,9 +325,9 @@ The `play_file` action can be used to play individual tracks on the CD, e.g.:
 
 ### Spotify, Tidal, Deezer, and Apple Music Share Links
 
-The `add_sharelink_to_queue` (or `sharelink`) action can be used to add share links from Spotify, Tidal, Deezer, or Apple Music to the queue, provided the Sonos system has a subscription to the required service.
+The `add_sharelink_to_queue` (or `sharelink`) action can be used to add one or more share links from Spotify, Tidal, Deezer, or Apple Music to the queue, provided the Sonos system has a subscription to the required service.
 
-Links can refer to tracks, albums, or playlists. The position of the first track added to the queue is returned, which can then be played using `play_from_queue`. Share links can be of the form:
+Links can refer to tracks, albums, or playlists. The queue position of the first track added is returned, which can then be played using `play_from_queue`. Share links can be of the form:
 
 - `https://open.spotify.com/track/6cpcorzV5cmVjBsuAXq4wD`
 - `spotify:album:6wiUBliPe76YAVpNEdidpY`
@@ -332,11 +335,16 @@ Links can refer to tracks, albums, or playlists. The position of the first track
 - `https://www.deezer.com/en/playlist/5390258182`
 - `https://music.apple.com/dk/album/black-velvet/217502930?i=217503142`
 
-**Example**:
+Multiple sharelinks can be supplied in a single action; they are added to the queue in order. An optional queue position can be supplied as the final argument; it applies to the first sharelink, and subsequent sharelinks are appended after it.
+
+**Examples**:
 ```
 sonos Kitchen sharelink "https://open.spotify.com/track/6cpcorzV5cmVjBsuAXq4wD"
 5 <-- Returns queue position of first track
 sonos Kitchen play_from_queue 5
+
+sonos Kitchen sharelink "https://open.spotify.com/track/AAA" "https://open.spotify.com/album/BBB"
+5 <-- Both added; returns queue position of first track
 ```
 
 ## Complete List of Available Actions
@@ -348,7 +356,7 @@ sonos Kitchen play_from_queue 5
 - **`bass`**: Returns the bass setting of the speaker, from -10 to 10.
 - **`bass <number>`**: Sets the bass setting of the speaker to `<number>`. Values must be between -10 and 10.
 - **`dialog_mode`** (or **`dialog`**, **`dialogue_mode`**, **`dialogue`**): Returns the dialog mode setting of the speaker, 'on' or 'off' (if applicable).
-- **`dialog_mode <on|off>`** (or **`dialog`**, **`dialogue_mode`**, **`dialogue`**): Sets the dialog mode setting of the speaker to 'on' of 'off' (if applicable).
+- **`dialog_mode <on|off>`** (or **`dialog`**, **`dialogue_mode`**, **`dialogue`**): Sets the dialog mode setting of the speaker to 'on' or 'off' (if applicable).
 - **`fixed_volume`**: Returns whether the speaker's Fixed Volume feature is enabled, 'on' or 'off'. (Applies to Sonos Connect and Port devices only.)
 - **`fixed_volume <on|off>`**: Sets whether the speaker's Fixed Volume feature is enabled.   
 - **`group_mute`**: Returns the group mute state of a group of speakers, 'on' or 'off'.
@@ -365,9 +373,9 @@ sonos Kitchen play_from_queue 5
 - **`night_mode <on|off>`** (or **`night`**): Sets the night mode setting of the speaker to 'on' or 'off' (if applicable).
 - **`playing_tv`** (or **`is_playing_tv`**): Returns whether the speaker is currently playing from its TV input source, 'yes' or 'no'.
 - **`ramp_to_volume <volume>` (or `ramp`)**: Gently raise or reduce the volume to `<volume>`, which is between 0 and 100. Returns the number of seconds to complete the ramp.
-- **`relative_bass <adjustment>` (or `rel_bass`, `rb`)** Increase or reduce the bass setting by `<adjustment>`, a value between -10 and 10.
-- **`relative_sub_gain <adjustment>` (or `rel_sub_gain`, `rsg`)** Increase or reduce a Sub's gain setting by `<adjustment>`, a value between -15 and 15.
-- **`relative_treble <adjustment>` (or `rel_treble`, `rt`)** Increase or reduce the treble setting by `<adjustment>`, a value between -10 and 10.
+- **`relative_bass <adjustment>` (or `rel_bass`, `rb`)**: Increase or reduce the bass setting by `<adjustment>`, a value between -10 and 10.
+- **`relative_sub_gain <adjustment>` (or `rel_sub_gain`, `rsg`)**: Increase or reduce a Sub's gain setting by `<adjustment>`, a value between -15 and 15.
+- **`relative_treble <adjustment>` (or `rel_treble`, `rt`)**: Increase or reduce the treble setting by `<adjustment>`, a value between -10 and 10.
 - **`relative_volume <adjustment>` (or `rel_vol`, `rv`)**: Raises or lowers the volume by `<adjustment>`, which must be a number from -100 to 100.
 - **`sub_enabled`**: Returns `on` if the zone's subwoofer is enabled, otherwise `off`.
 - **`sub_enabled <on|off>`**: Enables or disables a zone's subwoofer.
@@ -382,10 +390,10 @@ sonos Kitchen play_from_queue 5
 - **`surround_volume_tv`**: Reports the value of the volume level for surround speakers, when playing TV sources, from `-15` to `+15`.
 - **`surround_volume_tv <level>`**: Sets the value of the volume level for surround speakers, when playing TV sources, from `-15` to `+15`.
 - **`treble`**: Returns the treble setting of the speaker, from -10 to 10.
-- **`treble <number>`**: Sets the bass setting of the speaker to `<number>`. Values must be between -10 and 10.
+- **`treble <number>`**: Sets the treble setting of the speaker to `<number>`. Values must be between -10 and 10.
 - **`trueplay`**: Returns whether a speaker's Trueplay profile is enabled, 'on' or 'off'.
 - **`trueplay <on|off>`**: Sets whether a speaker's Trueplay profile is enabled. Can only be set to 'on' for speakers that have a current Trueplay tuning profile available.
-- **`volume` (or `vol`)**: Returns the current volume setting of the speaker (0 to 100)
+- **`volume` (or `vol`)**: Returns the current volume setting of the speaker (0 to 100).
 - **`volume <volume>` (or `vol`)**: Sets the volume of the speaker to `<volume>` (0 to 100).
 
 ### Playback Control
@@ -410,7 +418,7 @@ sonos Kitchen play_from_queue 5
 - **`play_m3u <m3u_file> <options>`** (or **`play_local_m3u`**): Plays a local M3U/M3U8 playlist consisting of local audio files (in supported audio formats). Can be followed by options `p` to print each filename before it plays, and/or `s` to shuffle the playlist, or `r` to play a single, random track from the playlist. (If using multiple options, concatenate them: e.g., `ps`.) Example: `sonos Study play_m3u my_playlist.m3u ps`. Add the `i` option to invoke **interactive** mode, which allows use of the keyboard to go to the (N)ext track, to (P)ause, or to (R)esume playback.
 - **`play_mode` (or `mode`)**: Returns the play mode of the speaker, one of `NORMAL`, `REPEAT_ONE`, `REPEAT_ALL`, `SHUFFLE`, `SHUFFLE_REPEAT_ONE`, or `SHUFFLE_NOREPEAT`.
 - **`play_mode <mode>` (or `mode`)**: Sets the play mode of the speaker to `<mode>`, which is one of the values above.
-- **`play_sharelink <sharelink>`**: Adds a sharelink to the end of the queue and starts playback.
+- **`play_sharelink <sharelink> [<sharelink2> ...] [<position>]`**: Adds one or more sharelinks to the queue and starts playback from the first one added. An optional position applies to the first sharelink; the rest are appended after it.
 - **`play_uri <uri> <title>` (or `uri`, `pu`)**: Plays the audio object given by the `<uri>` parameter (e.g., a radio stream URL). `<title>` is optional, and if present will be used for the title of the audio stream.
 - **`previous` (or `prev`)**: Move to the previous track (if applicable for the audio source).
 - **`repeat` (or `rpt`)**: Returns the repeat mode state: 'off', 'one', or 'all'.
@@ -455,8 +463,8 @@ When items are added to the queue successfully, the queue position of the first 
 The available actions are:
 
 - **`add_playlist_to_queue <playlist_name> [<position>]`** (or **`queue_playlist`, `add_pl_to_queue`, `apq`**): Add `<playlist_name>` to the queue. Name matching is case-insensitive, and will work on partial matches.
-- **`add_library_playlist_to_queue <playlist_name> ]<position>]`** (or **`alpq`**): As above, but targets local library imported playlists instead of Sonos playlists.
-- **`add_sharelink_to_queue <sharelink> [<position>]`** (or **`sharelink`**): Add a **Spotify**, **Tidal**, **Deezer**, or **Apple Music** link (for a track, album, playlist, etc.) to the queue. Returns the queue position of the first track. Supported links formats are: `https://open.spotify.com/track/6cpcorzV5cmVjBsuAXq4wD`, `spotify:album:6wiUBliPe76YAVpNEdidpY`, `https://tidal.com/browse/album/157273956`, `https://www.deezer.com/en/playlist/5390258182`, `https://music.apple.com/dk/album/black-velvet/217502930?i=217503142`.
+- **`add_library_playlist_to_queue <playlist_name> [<position>]`** (or **`alpq`**): As above, but targets local library imported playlists instead of Sonos playlists.
+- **`add_sharelink_to_queue <sharelink> [<sharelink2> ...] [<position>]`** (or **`sharelink`**): Add one or more **Spotify**, **Tidal**, **Deezer**, or **Apple Music** links (for tracks, albums, playlists, etc.) to the queue. Returns the queue position of the first track added. Multiple sharelinks are added in order; an optional position applies to the first, and the rest are appended.
 - **`add_uri_to_queue <uri> [<position>]`** Adds a URI to the queue.
 - **`clear_queue`** (or **`cq`**): Clears the current queue
 - **`list_queue`** (or **`lq`, `q`**): List the tracks in the queue
@@ -503,12 +511,14 @@ The following operate on the stations in TuneIn's 'My Radio Stations' list.
 - **`play_favourite_radio_station <station_name>`** (or **`play_favorite_radio_station`, `pfrs`**): Play a favourite radio station.
 - **`play_fav_radio_station_no <station_number>`** (or **`pfrsn`**): Play a favourite radio station by its number.
 
-### Grouping and Stereo Pairing
+### Grouping, Stereo Pairing, and Surround (Satellite) Speakers
 
+- **`add_satellite_speakers <left_rear_speaker> <right_rear_speaker>`** (or **`add_satellites`**): Bonds `<left_rear_speaker>` and `<right_rear_speaker>` as rear satellite speakers to the target soundbar. The target speaker must be a soundbar. Example: `sonos "Arc" add_satellites "Era 100 L" "Era 100 R"`.
 - **`group <master_speaker>`(or `g`)**: Groups the speaker with `<master_speaker>`, which acts as the coordinator.
 - **`multi_group <slave_speaker> [<slave_speaker> ...]`**: Groups one or more speakers with the target speaker, which acts as the coordinator.
 - **`pair <right_hand_speaker>`**: Creates a stereo pair, where the target speaker becomes the left-hand speaker of the pair and `<right_hand_speaker>` becomes the right-hand of the pair. Can be used to pair dissimilar Sonos devices (e.g., to stereo-pair a Play:1 with a One). The left-hand speaker becomes the coordinator speaker, and the stereo pair will adopt its name.
 - **`party_mode` (or `party`)**: Adds all speakers in the system into a single group. The target speaker becomes the group coordinator. Remove speakers individually using `ungroup`, or use `ungroup_all`.
+- **`separate_satellite_speakers`** (or **`separate_satellites`**): Removes all bonded satellite speakers from the target soundbar. The target speaker must be a soundbar. Note: this will reset the Trueplay tuning for the device.
 - **`transfer_playback <target_speaker>` (or `transfer_to`, `transfer`)**: Transfers playback to <target_speaker>. This is achieved by grouping and ungrouping the speakers, and swapping the group coordinator. It's a convenience shortcut for `speaker1 group speaker2 : speaker1 ungroup`.
 - **`ungroup` (or `ug`, `u`)**: Removes the speaker from a group.
 - **`ungroup_all`**: Removes all speakers in the target speaker's household from all groups.
@@ -540,6 +550,8 @@ In actions which **modify** (or copy and modify) an existing alarm, values that 
 The **alarm actions** are as follows:
 
   - **`alarms`** (or **`list_alarms`**): List all of the alarms in the Sonos system. Each alarm has a unique integer `alarm_id` that can be used in the other alarm actions.
+  - **`alarms_spec`**: List all alarms in `alarm_spec` format, making it easy to copy alarm specs directly into `modify_alarm` or `add_alarm` commands. Specs containing spaces (e.g., in favourite names) are shown pre-quoted for shell use.
+  - **`alarms_spec_zone`**: As `alarms_spec`, but lists only the alarms for the target zone (speaker).
   - **`alarms_zone`**: List the alarms for the target zone (speaker) only.
   - **`copy_alarm <alarm_id>`**: Copies the alarm with ID `alarm_id` to the target speaker. Note that alarms cannot be copied back to the same speaker (instead, use `copy_modify_alarm` to do this).
   - **`copy_modify_alarm <alarm_id> <alarm_spec>`**: Copies an existing alarm to the target speaker and modifies it according to an alarm specification. Can be used to copy an alarm on the same speaker, but in that case note that the copied alarm **must** have its start time modified.
@@ -766,7 +778,8 @@ This is SoCo-CLI interactive mode. Interactive commands are as follows:
     'cd'         :  Change the working directory of the shell, e.g. 'cd ..'.
                     Note that on Windows, backslashes must be doubled, e.g.:
                     'cd C:\\'
-    'check_for_update' : Check whether an update is available
+    'check-for-update' 
+                 : Check whether an update is available
     'docs'       :  Print a link to the online documentation.
     'exec'       :  Run a shell command, e.g.: 'exec ls -l'.
     'exit'       :  Exit the shell.
@@ -877,12 +890,12 @@ Positional arguments can be used multiple times within an action (unlikely to be
 #### Saving and Loading Aliases
 
 ```
-sonos --save_aliases <filename>
-sonos --load_aliases <filename>
-sonos --overwrite_aliases <filename>
+sonos --save-aliases <filename>
+sonos --load-aliases <filename>
+sonos --overwrite-aliases <filename>
 ```
 
-Aliases can be exported to, and loaded from, plain text files using the command line options above. The command will terminate once the file operation is complete. Option `save_aliases` will export the current aliases to the supplied filename; `load_aliases` will load a list of aliases and merge them with the current list (overwriting any duplicate alias names); `overwrite_aliases` will overwrite all current aliases with the list from the file.
+Aliases can be exported to, and loaded from, plain text files using the command line options above. The command will terminate once the file operation is complete. Option `save-aliases` will export the current aliases to the supplied filename; `load-aliases` will load a list of aliases and merge them with the current list (overwriting any duplicate alias names); `overwrite-aliases` will overwrite all current aliases with the list from the file.
 
 The alias file format consists of lines containing `<alias_name> = <alias actions>`, e.g:
 
@@ -931,7 +944,7 @@ Note that if you have speakers with the same names in multiple Sonos systems (Ho
 
 ### Refreshing the Local Speaker List
 
-If your speakers change in some way (e.g., they are renamed, are assigned different IP addresses, or you add/remove speakers), you can refresh the discovery cache using the `--refresh-speaker-list` or `-r` option. Note that this option only has an effect when combined with the `-l` option. You can also use the `sonos-discover` command (below).
+If your speakers change in some way (e.g., they are renamed, are assigned different IP addresses, or you add/remove speakers), you can refresh the discovery cache using the `--refresh-local-speaker-list` or `-r` option. Note that this option only has an effect when combined with the `-l` option. You can also use the `sonos-discover` command (below).
 
 **Example:** `sonos -lr "living room" volume 50` will refresh the discovery cache before executing the `sonos` command.
 
@@ -939,8 +952,8 @@ If your speakers change in some way (e.g., they are renamed, are assigned differ
 
 The following flags can be used to adjust network discovery behaviour if the discovery process is failing:
 
-- **`--network_discovery_threads, -t`**: The number of parallel threads used to scan the local network.
-- **`--network_discovery_timeout, -n`**: The timeout used when scanning each host on the local network (how long to wait for a socket connection on port 1400 before giving up).
+- **`--network-discovery-threads, -t`**: The number of parallel threads used to scan the local network.
+- **`--network-discovery-timeout, -n`**: The timeout used when scanning each host on the local network (how long to wait for a socket connection on port 1400 before giving up).
 
 These options only have an effect when combined with the `-l` **and** `-r` options.
 
@@ -962,14 +975,14 @@ Discovery works by interrogating all network adapters on the device running SoCo
 
 - **`--print, -p`**: Print the the current contents of the speaker cache file
 - **`--delete-local-speaker-cache, -d`**: Delete the local speaker cache file.
-- **`--network_discovery_threads, -t`**: The maximum number of parallel threads used to scan the local network.
-- **`--network_discovery_timeout, -n`**: The timeout used when scanning each host on the local network (how long to wait for a socket connection on port 1400 before giving up). Use this if `sonos-discover` is not finding all of your Sonos devices.
-- **`--min_netmask, -m`**: The minimum netmask to use when scanning networks. Used to constrain the IP search space. (Note that this option will never **increase** the search space, e.g., if one of the attached networks is 192.168.0.0/24, supplying a `--min_netmask` value of 16 will not increase the search space to 192.168.0.0/16.)
+- **`--network-discovery-threads, -t`**: The maximum number of parallel threads used to scan the local network.
+- **`--network-discovery-timeout, -n`**: The timeout used when scanning each host on the local network (how long to wait for a socket connection on port 1400 before giving up). Use this if `sonos-discover` is not finding all of your Sonos devices.
+- **`--min-netmask, -m`**: The minimum netmask to use when scanning networks. Used to constrain the IP search space. (Note that this option will never **increase** the search space, e.g., if one of the attached networks is 192.168.0.0/24, supplying a `--min-netmask` value of 16 will not increase the search space to 192.168.0.0/16.)
 - **`--version, -v`**: Print the versions of SoCo-CLI, SoCo, Python, and exit.
-- **`--check_for_update`**: Check for a more recent version of SoCo-CLI.  
+- **`--check-for-update`**: Check for a more recent version of SoCo-CLI.  
 - **`--docs`**: Print the URL of this README documentation, for the version of SoCo-CLI being used.
 - **`--log <level>`**: Turn on logging. Available levels are NONE (default), CRITICAL, ERROR, WARN, INFO, DEBUG, in order of increasing verbosity.
-- **`--subnets <subnets_list>`**: Specify which subnet(s) to search, as a comma separated list (without spaces). E.g.: `--subnets 192.168.0.0/24,192.168.1.0/24` or `--subnets 192.168.0.30`. When this option is used, only the specified subnet(s) will be searched, and the `--min_netmask` option (if supplied) is ignored.
+- **`--subnets <subnets_list>`**: Specify which subnet(s) to search, as a comma separated list (without spaces). E.g.: `--subnets 192.168.0.0/24,192.168.1.0/24` or `--subnets 192.168.0.30`. When this option is used, only the specified subnet(s) will be searched, and the `--min-netmask` option (if supplied) is ignored.
 
 ## The SoCo-CLI HTTP API Server
 
@@ -1091,7 +1104,7 @@ Note that the data returned in this case is probably not useful: it will simply 
 
 Async actions are mutually exclusive for a given speaker: any running async action will be cancelled if a new async action is invoked.
 
-The `async_` functionality does not (yet) apply to the Macros feature described below.
+The `async_` prefix also works with macros. See [Asynchronous Macros](#asynchronous-macros) below.
 
 ### Macros: Defining Custom HTTP API Server Actions
 
@@ -1202,12 +1215,23 @@ The macro file can be reloaded using the `/macros/reload` endpoint (e.g.: `http:
 Successful invocation of a macro will return the sonos command that was executed, and the result(s) of the actions that were performed (or the error output(s) in the case of a failure), in JSON format, e.g.:
 
 ```
-{"command": "sonos Kitchen volume", result": "30"}
+{"command": "sonos Kitchen volume", "result": "30"}
 ```
 
 #### Listing Macros
 
 The `macros/list` endpoint (e.g.: `http://192.168.0.100:8000/macros/list`) will return a JSON list of the macros installed in the server.
+
+#### Asynchronous Macros
+
+Macros can be run asynchronously by prefixing the macro name with `async_` in the URL. The server responds immediately while the macro continues to run in the background. For example:
+
+```
+http://192.168.0.100:8000/macro/async_doorbell
+http://192.168.0.100:8000/macro/async_lower_floor_volume/30
+```
+
+As with asynchronous actions, the data returned is not the macro's output — it will simply indicate whether the background process was successfully invoked. Asynchronous macros are mutually exclusive per macro name: if an async macro with the same name is already running, it will be cancelled before the new one is started.
 
 ### Listing Speakers
 

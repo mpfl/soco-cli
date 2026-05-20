@@ -210,7 +210,7 @@ def convert_to_seconds(time_str):
         else:  # Seconds (default)
             duration = float(time_str)
         return duration
-    except:
+    except (ValueError, TypeError):
         raise ValueError
 
 
@@ -260,6 +260,19 @@ def set_suspend_sighandling(suspend=True):
     suspend_sighandling = suspend
 
 
+# Flag set when CTRL-C interrupts a suspended-sighandling subprocess
+_ctrl_c_interrupted = False
+
+
+def set_ctrl_c_interrupted(value=True):
+    global _ctrl_c_interrupted
+    _ctrl_c_interrupted = value
+
+
+def get_ctrl_c_interrupted():
+    return _ctrl_c_interrupted
+
+
 # Stop a stream if playing a local file
 speaker_playing_local_file = None
 
@@ -279,6 +292,8 @@ def sig_handler(signal_received, frame):
     logging.info("Caught signal: {}".format(signal_received))
 
     if suspend_sighandling:
+        if signal_received == signal.SIGINT:
+            set_ctrl_c_interrupted(True)
         logging.info("Signal handling suspended ... ignoring")
         return
 
@@ -585,10 +600,8 @@ def get_speaker(name, local=False):
     # Use discovery
     # Try various lookup methods in order of expense,
     # and cache results where possible
-    speaker = None
-    if not speaker:
-        logging.info("Trying direct cache lookup")
-        speaker = SPKR_CACHE.find(name)
+    logging.info("Trying direct cache lookup")
+    speaker = SPKR_CACHE.find(name)
     if not speaker:
         logging.info("Trying indirect cache lookup")
         speaker = SPKR_CACHE.find_indirect(name)
@@ -612,7 +625,7 @@ def get_right_hand_speaker(left_hand_speaker):
     # left-hand speaker is supplied
     if not left_hand_speaker.is_visible:
         # If not visible, this is not a left-hand speaker
-        logging.info("Speaker is visible: not a left-hand speaker")
+        logging.info("Speaker is not visible: not a left-hand speaker")
         return None
 
     # Find the speaker which is not visible, for which the
@@ -658,6 +671,7 @@ def configure_common_args(parser):
     )
     parser.add_argument(
         "--min_netmask",
+        "--min-netmask",
         "-m",
         type=int,
         default=24,
@@ -693,6 +707,7 @@ def configure_common_args(parser):
     )
     parser.add_argument(
         "--check_for_update",
+        "--check-for-update",
         action="store_true",
         default=False,
         help="Check for a more recent version of SoCo-CLI",
@@ -855,9 +870,11 @@ def _confirm_soco_cli_dir() -> bool:
         try:
             os.mkdir(SOCO_CLI_DIR)
             return True
-        except:
+        except OSError:
             error_report("Failed to create directory '{}'".format(SOCO_CLI_DIR))
             return False
+    else:
+        return True
 
 
 def remember_event_sub(sub):
@@ -880,9 +897,34 @@ def unsub_all_remembered_event_subs():
     for sub in SUBS_LIST:
         try:
             event_unsubscribe(sub)
-        except:
+        except Exception:
             break
     SUBS_LIST.clear()
+
+
+def find_by_name(items, name):
+    """Find an item by strict then fuzzy match on its .title attribute.
+
+    Returns the first matched item, or None if not found.
+    """
+    for item in items:
+        if name == item.title:
+            logging.info("Strict match '{}' found".format(item.title))
+            return item
+    name_lower = name.lower()
+    for item in items:
+        if name_lower in item.title.lower():
+            logging.info("Fuzzy match '{}' found".format(item.title))
+            return item
+    return None
+
+
+def queue_is_empty(speaker):
+    """Return True and report error if the queue is empty, otherwise False."""
+    if speaker.queue_size == 0:
+        error_report("Queue is empty")
+        return True
+    return False
 
 
 def create_list_of_items_from_range(range_definition: str, upper_limit: int):

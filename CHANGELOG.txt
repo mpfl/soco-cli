@@ -1,3 +1,19 @@
+v0.4.86   - Add 'async_' prefix support for HTTP API Server macros
+          - Allow multiple sharelinks in a single 'add_sharelink_to_queue' action
+          - Allow multiple sharelinks in a single 'play_sharelink' action;
+            add optional 'position' argument
+v0.4.85   - Add 'alarms_spec' and 'alarms_spec_zone' actions to list alarms in
+            alarm spec format for easy copy/paste into 'modify_alarm'/'add_alarm'
+v0.4.84   - Interrupt command sequence on break (fixes #35)
+          - Add support for adding & removing surround sound satellite speakers
+          - Add requirement for SoCo v0.31.0
+v0.4.83   - Fix tab completion in interactive mode for Python 3.10+
+          - Fix bug when checking for .soco-cli directory
+v0.4.82   - Add 'redirect_io' boolean option to API 'run_command()' to
+            prevent capture of stdout and stderr (fixes #85)
+v0.4.81   - Eliminate/alias inconsistent use of underscore in command line
+            option names (#84)
+v0.4.80   - Minor fixes & bump SoCo version requirement
 v0.4.79   - Add 'list_audio_files' path to HTTP API Server
 v0.4.78   - Allow pass-through of '_end_on_pause' via HTTP API
           - HTTP API server: new 'async' operation will cancel an existing,
@@ -20,7 +36,7 @@ v0.4.69   - Add 'strict' option for all music library searches
 v0.4.68   - Add 'strict' option to 'search_artists'
           - Add 'queue_multiple_search_results' action
 v0.4.67   - Multiple artist search results from 'search_artists' are now saved
-v0.4.66   - '_all_' now targets all visible speakers (including non-cordinators)
+v0.4.66   - '_all_' now targets all visible speakers (including non-coordinators)
 v0.4.65   - Add 'if_queue/if_no_queue' conditional action modifiers
 v0.4.64   - Add 'multi_group/mg' action
 v0.4.63   - Add 'if_coordinator' conditional action modifier
@@ -29,7 +45,7 @@ v0.4.63   - Add 'if_coordinator' conditional action modifier
 v0.4.62   - Use Sonos Favourites instead of URIs when creating alarms
 v0.4.61   - Add 'set_queue_position' action
 v0.4.60   - Add 'generic' HTTP macro and increase number of args to 12
-          - Fix remove_playlist / delete_playist actions
+          - Fix remove_playlist / delete_playlist actions
 v0.4.59   - Add queue position option for 'add_sharelink_to_queue'
 v0.4.58   - Add 'stop_all' action
 v0.4.57   - Defect fix for 'if_stopped/if_playing'

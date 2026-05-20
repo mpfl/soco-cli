@@ -70,13 +70,18 @@ class ActiveAsyncOps:
             return None
         try:
             kill(pid, SIGINT)
-        except:
-            pass
-        self.remove_async_pid(speaker_ip)
+            self.remove_async_pid(speaker_ip)
+        except ProcessLookupError:
+            # Process already dead; clean up the stale PID
+            self.remove_async_pid(speaker_ip)
+        except Exception:
+            # Kill failed for another reason (e.g. permissions); leave PID tracked
+            return None
         return pid
 
 
 ASYNC_OPS = ActiveAsyncOps()
+ASYNC_MACRO_OPS = ActiveAsyncOps()
 
 
 sc_app = FastAPI(
@@ -188,7 +193,6 @@ def rediscover() -> Dict:
 
 @sc_app.get("/list_audio_files/{directory:path}")
 def list_audio_files(directory: str) -> List[str]:
-    print(directory)
     tracks = []
     try:
         with scandir(directory) as files:
@@ -458,8 +462,8 @@ def action_1_path(speaker: str, action: str, arg_1: str) -> Dict:
     # Handle special case of _end_on_pause_ being appended to a file path
     # instead of being treated as a separate argument.
     arg_2 = "_end_on_pause_"
-    if arg_1.endswith(arg_2):
-        arg_1 = arg_1.replace("/" + arg_2, "")
+    if arg_1.endswith("/" + arg_2):
+        arg_1 = arg_1[: -(len(arg_2) + 1)]
         return command_core(speaker, action, arg_1, arg_2, use_local=USE_LOCAL)
 
     return command_core(speaker, action, arg_1, use_local=USE_LOCAL)
@@ -573,6 +577,11 @@ def main() -> None:
 
 
 def _process_macro(macro_name: str, *args) -> Tuple[str, str]:
+    # Check for async prefix
+    is_async = macro_name.startswith(ASYNC_PREFIX)
+    if is_async:
+        macro_name = macro_name[len(ASYNC_PREFIX) :]
+
     # Look up the macro
     try:
         macro = _lookup_macro(macro_name)
@@ -593,15 +602,33 @@ def _process_macro(macro_name: str, *args) -> Tuple[str, str]:
         sonos_command_line = "sonos " + sonos_command_line
 
     # Execute the command
-    print(PREFIX_MACRO + "Executing: '" + sonos_command_line + "' in a subprocess")
-    try:
-        output = check_output(sonos_command_line, stderr=STDOUT, shell=True)
-        print(PREFIX_MACRO + "Exit code = 0")
-        return sonos_command_line, output.decode("utf-8").rstrip()
-    except CalledProcessError as exc:
-        error = exc.output.decode("utf-8").rstrip().replace("\n", "; ")
-        print(PREFIX_MACRO + "Exit code = {} [{}]".format(exc.returncode, error))
-        return sonos_command_line, error
+    if is_async:
+        print(
+            PREFIX_MACRO
+            + "Executing async: '"
+            + sonos_command_line
+            + "' in a background subprocess"
+        )
+        try:
+            async_key = macro_name + ("|" + "|".join(args) if args else "")
+            ASYNC_MACRO_OPS.stop_async_process(async_key)
+            proc = Popen(shlex.split(sonos_command_line))
+            ASYNC_MACRO_OPS.add_async_pid(async_key, proc.pid)
+            print(PREFIX_MACRO + "Async macro started with PID {}".format(proc.pid))
+            return sonos_command_line, ""
+        except Exception as e:
+            print(PREFIX_MACRO + "Async macro failed: {}".format(e))
+            return sonos_command_line, "Error: {}".format(e)
+    else:
+        print(PREFIX_MACRO + "Executing: '" + sonos_command_line + "' in a subprocess")
+        try:
+            output = check_output(shlex.split(sonos_command_line), stderr=STDOUT)
+            print(PREFIX_MACRO + "Exit code = 0")
+            return sonos_command_line, output.decode("utf-8").rstrip()
+        except CalledProcessError as exc:
+            error = exc.output.decode("utf-8").rstrip().replace("\n", "; ")
+            print(PREFIX_MACRO + "Exit code = {} [{}]".format(exc.returncode, error))
+            return sonos_command_line, error
 
 
 def _lookup_macro(macro_name: str) -> str:
@@ -716,21 +743,21 @@ def _load_macros(macros: dict, filename: str) -> bool:
             line = f.readline()
             while line != "":
                 if not line.startswith("#") and line != "\n":
-                    if line.count("=") != 1:
+                    if "=" not in line:
                         print(
                             PREFIX_MACRO
                             + "Malformed macro '{}'... ignored".format(line)
                         )
                         print(line, end="")
                     else:
-                        macro = line.split("=")
-                        macros[macro[0].strip()] = macro[1].strip()
+                        name, _, value = line.partition("=")
+                        macros[name.strip()] = value.strip()
                 line = f.readline()
         print(PREFIX_MACRO + "Loaded macros:")
         PP.pprint(macros)
         return True
-    except:
-        print(PREFIX_MACRO + "Macro file not found")
+    except Exception as e:
+        print(PREFIX_MACRO + "Failed to load macro file: {}".format(e))
         return False
 
 
