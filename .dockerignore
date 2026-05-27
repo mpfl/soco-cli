@@ -1,0 +1,13 @@
+.git
+.github
+tests
+assets
+*.md
+*.txt
+!requirements.txt
+MANIFEST.in
+RELEASING.txt
+pylintrc
+gh-md-toc
+Makefile
+docker-compose.yml
